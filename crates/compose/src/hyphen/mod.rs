@@ -6,6 +6,9 @@
 //! Greek is `hyph-el-monoton.tex` 5.0 from hyph-utf8 (Dimitrios Filippou), LPPL or MIT, taken
 //! under MIT. Those are the **monotonic** patterns, which is what `hypher` maps `el` to, so
 //! polytonic text hyphenates by them as well.
+//! German uses `hyph-de-1996.tex` (2024-02-28, Deutschsprachige Trennmustermannschaft, MIT):
+//! despite the filename, these are the reformed 2006 spelling patterns. All German language
+//! names and locale codes resolve to this set; no separate old-spelling or Swiss set is bundled.
 //!
 //! English lookup order for each word:
 //! 1. the **dictionary** ([`Dictionary::en_us`]) — the public-domain Moby Hyphenator II word list
@@ -377,6 +380,41 @@ mod tests {
         assert!(hyphen_points("Paragraph", &lim).is_empty());
         let lim = Limits { min_word: 12, ..Limits::default() };
         assert!(hyphen_points("typography", &lim).is_empty());
+    }
+
+    #[test]
+    fn german_2006_uses_reformed_patterns() {
+        let de = Lang::for_language("German: 2006 Reform").unwrap();
+        assert_eq!(de, Lang::Patterns(hypher::Lang::German));
+        for name in ["German", "$ID/German: 2006 Reform", "de", "de-DE", "de_AT", "de_DE_2006", "German: Swiss 2006 Reform", "de_CH_2006"] {
+            assert_eq!(Lang::for_language(name), Some(de), "{name}");
+        }
+        for (word, expected) in [
+            ("Silbentrennung", "Sil-ben-tren-nung"),
+            ("Zucker", "Zu-cker"),
+            ("Bäcker", "Bä-cker"),
+            ("Fenster", "Fens-ter"),
+            ("Straße", "Stra-ße"),
+            ("Fußgänger", "Fuß-gän-ger"),
+            ("Donaudampfschifffahrt", "Do-nau-dampf-schiff-fahrt"),
+            ("SILBENTRENNUNG", "SIL-BEN-TREN-NUNG"),
+        ] {
+            let pts = hyphen_points_in(word, &Limits::default(), de);
+            let actual: String = word.chars().enumerate().map(|(i, c)| if pts.contains(&i) { format!("-{c}") } else { c.to_string() }).collect();
+            assert_eq!(actual, expected, "{word}");
+        }
+    }
+
+    #[test]
+    fn german_2006_respects_paragraph_limits() {
+        let de = Lang::for_language("de_DE_2006").unwrap();
+        let lim = Limits { after_first: 4, before_last: 5, ..Limits::default() };
+        assert_eq!(hyphen_points_in("Silbentrennung", &lim, de), vec![6]);
+        let lim = Limits { min_word: 15, ..Limits::default() };
+        assert!(hyphen_points_in("Silbentrennung", &lim, de).is_empty());
+        let lim = Limits { capitalized: false, ..Limits::default() };
+        assert!(hyphen_points_in("Silbentrennung", &lim, de).is_empty());
+        assert!(!hyphen_points_in("silbentrennung", &lim, de).is_empty());
     }
 
     #[test]
