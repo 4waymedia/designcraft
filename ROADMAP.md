@@ -348,7 +348,7 @@ list) · [roadmap.md](docs/roadmap.md) (milestones, plan) · [parity-checklist.m
 
 Newest first.
 
-- **2026-10-18** · German text hyphenates using the MIT-licensed 2006 reform patterns (`hyph-de-1996.tex`) through `hypher`. Language names and locale codes reach both composers; tests cover umlauts, ß, compounds, reformed ck/st breaks and paragraph limits. Six of InDesign's ~40 hyphenation languages. No readiness percentage change.
+- **2026-10-18** · German text hyphenates using the MIT-licensed 2006 reform patterns (`hyph-de-1996.tex`) through `hypher`. Explicit 2006 names and plain/2006 locale codes reach both composers; traditional and unknown spelling variants stay unhyphenated. Tests cover this distinction, umlauts, ß, compounds, reformed ck/st breaks and paragraph limits. Six of InDesign's ~40 hyphenation languages. No readiness percentage change.
 
 - **2026-10-16** · Threading: the loaded text cursor threads into a text frame inside a group (it hit the group and showed it could not thread); a plain click still selects the group (#1075). Gap 27 closed. No readiness percentage change.
 - **2026-10-16** · Greek text hyphenates. The patterns were never compiled in, so Greek set unhyphenated however narrow the column; `"Greek"`, `"Greek: Greece"`, `el` and `el-GR` all resolve now and ανθρωπος breaks αν-θρω-πος. They are the monotonic patterns (hyph-el-monoton, Dimitrios Filippou, under MIT), which is what polytonic text hyphenates by too. Five of InDesign's ~40 hyphenation languages. No readiness percentage change.

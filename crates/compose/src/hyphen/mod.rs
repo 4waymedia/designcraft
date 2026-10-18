@@ -7,8 +7,9 @@
 //! under MIT. Those are the **monotonic** patterns, which is what `hypher` maps `el` to, so
 //! polytonic text hyphenates by them as well.
 //! German uses `hyph-de-1996.tex` (2024-02-28, Deutschsprachige Trennmustermannschaft, MIT):
-//! despite the filename, these are the reformed 2006 spelling patterns. All German language
-//! names and locale codes resolve to this set; no separate old-spelling or Swiss set is bundled.
+//! despite the filename, these are the reformed 2006 spelling patterns. Only the two 2006 reform
+//! names and German locale codes without a reform year or with 2006 use this set. Traditional,
+//! 1901 and unknown German variants have no automatic hyphenation; no old-spelling set is bundled.
 //!
 //! English lookup order for each word:
 //! 1. the **dictionary** ([`Dictionary::en_us`]) — the public-domain Moby Hyphenator II word list
@@ -87,6 +88,11 @@ impl Lang {
         }
         let tag = designcraft_doc::language_tag(language)?;
         let sub = designcraft_doc::language_subtag(tag);
+        // language_tag deliberately drops spelling variants for shaping and quotes. Hyphenation
+        // must retain that distinction: the 2006 patterns are wrong for traditional ck/st breaks.
+        if sub == "de" && !german_2006_language(language) {
+            return None;
+        }
         if sub == "en" {
             return Some(Lang::English);
         }
@@ -96,6 +102,15 @@ impl Lang {
         }
         hypher::Lang::from_iso([b[0], b[1]]).map(Lang::Patterns)
     }
+}
+
+/// Accept explicit reform names and unqualified German locales (our modern default), but never
+/// silently substitute reform patterns for another spelling variant imported from IDML.
+fn german_2006_language(language: &str) -> bool {
+    let language = language.trim();
+    let normalized = language.strip_prefix("$ID/").unwrap_or(language).to_lowercase();
+    let words: Vec<&str> = normalized.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    matches!(words.as_slice(), ["german", "2006", "reform"] | ["german", "swiss", "2006", "reform"] | ["de"] | ["de", _] | ["de", _, "2006"])
 }
 
 /// Where a word's break points came from.
@@ -386,7 +401,18 @@ mod tests {
     fn german_2006_uses_reformed_patterns() {
         let de = Lang::for_language("German: 2006 Reform").unwrap();
         assert_eq!(de, Lang::Patterns(hypher::Lang::German));
-        for name in ["German", "$ID/German: 2006 Reform", "de", "de-DE", "de_AT", "de_DE_2006", "German: Swiss 2006 Reform", "de_CH_2006"] {
+        for name in [
+            "$ID/German: 2006 Reform",
+            " german: 2006 reform ",
+            "de",
+            "de-DE",
+            "de_AT",
+            "de_CH",
+            "de_DE_2006",
+            "German: Swiss 2006 Reform",
+            "$ID/German: Swiss 2006 Reform",
+            "de_CH_2006",
+        ] {
             assert_eq!(Lang::for_language(name), Some(de), "{name}");
         }
         for (word, expected) in [
@@ -402,6 +428,27 @@ mod tests {
             let pts = hyphen_points_in(word, &Limits::default(), de);
             let actual: String = word.chars().enumerate().map(|(i, c)| if pts.contains(&i) { format!("-{c}") } else { c.to_string() }).collect();
             assert_eq!(actual, expected, "{word}");
+        }
+    }
+
+    #[test]
+    fn non_2006_german_has_no_bundled_hyphenation() {
+        for name in [
+            "German",
+            "German: Traditional",
+            "$ID/German: Traditional",
+            "German: Swiss",
+            "German: 1901",
+            "German: 1996 Reform",
+            "German: Unknown",
+            "German: Traditional 2006 Reform",
+            "de_DE_1901",
+            "de-CH-1901",
+            "de_AT_1996",
+            "de_DE_2099",
+        ] {
+            assert_eq!(designcraft_doc::language_subtag(designcraft_doc::language_tag(name).unwrap()), "de", "{name}");
+            assert_eq!(Lang::for_language(name), None, "{name}: do not use 2006 ck/st breaks for unsupported spelling variants");
         }
     }
 

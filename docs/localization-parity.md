@@ -67,6 +67,9 @@ InDesign 2026 hyphenates and spell-checks ~40 languages (Hunspell and Duden dict
 DesignCraft hyphenates **English, Spanish, Portuguese, Norwegian, Greek and German (2006 reform)** and spell-checks **English** only. Text language
 can be set per paragraph and character (Properties, Character panel) and drives quotes and
 locale shaping. See [typography-parity.md](typography-parity.md).
+German hyphenation accepts `German: 2006 Reform`, `German: Swiss 2006 Reform` and `de` locale
+codes without a spelling year or with `2006`. Traditional names, `de_DE_1901` and unknown
+German variants have no automatic hyphenation; their German shaping and quotes are unchanged.
 
 ## Remaining effort
 
