@@ -204,7 +204,7 @@ pub fn app_bar(app: &mut DesignApp, ui: &mut egui::Ui) {
                     egui::pos2(full.min.x - f32::from(left), full.min.y),
                     egui::pos2(full.max.x + 10.0, full.min.y + MAC_APP_BAR),
                 );
-                crate::title_bar::empty_area(ui, band);
+                let _ = craft_window::title_bar::empty_area(ui, band);
             }
             let mut menus_end = full.min.x;
             let mut tools_start = full.max.x;
@@ -579,7 +579,7 @@ const TRACKING: &[f64] = &[-100.0, -75.0, -50.0, -25.0, -10.0, -5.0, 0.0, 5.0, 1
 const PARA_MODE: &str = "ctl_text_para_mode";
 
 /// An icon and a field after it, as the Control panel lays its fields out.
-fn icon_field(ui: &mut egui::Ui, icon: &str, tip: &str, field: NumField) -> Option<f64> {
+pub(crate) fn icon_field(ui: &mut egui::Ui, icon: &str, tip: &str, field: NumField) -> Option<f64> {
     let t = Tokens::get(ui.ctx());
     let (r, resp) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::hover());
     icons::paint(ui.painter(), r, icon, t.icon);
@@ -2088,7 +2088,7 @@ mod tests {
         let mut movable_at = |at: egui::Pos2| {
             h.hover_at(at);
             h.run_steps(2);
-            crate::title_bar::window_movable(&h.ctx)
+            craft_window::title_bar::window_movable(&h.ctx)
         };
         for at in [pos2(bar.center().x, mid), pos2(bar.min.x + MAC_CONTENT_LEFT - 4.0, bar.min.y + 4.0), pos2(bar.center().x, 500.0)] {
             assert!(movable_at(at), "empty title bar or the page at {at:?}");
