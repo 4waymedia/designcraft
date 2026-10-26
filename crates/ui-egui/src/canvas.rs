@@ -745,7 +745,7 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
         };
         // A ruler guide being dragged keeps the cursor across it until it is dropped, over the
         // canvas too (the tool's cursor took over as soon as the pointer left the ruler).
-        let c = match ui.data(|d| d.get_temp::<GuideDrag>(egui::Id::new(GUIDE_DRAG))).map(|g| g.orientation) {
+        let c = match ui.data(|d| d.get_temp::<GuideDrag>(egui::Id::unique(GUIDE_DRAG))).map(|g| g.orientation) {
             Some(designcraft_doc::Orientation::Horizontal) => Cursor::ResizeV,
             Some(designcraft_doc::Orientation::Vertical) => Cursor::ResizeH,
             None => c,
