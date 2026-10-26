@@ -268,6 +268,11 @@ pub fn specs() -> Vec<CommandSpec> {
             |s, p| {
                 let style = str_param(p, "style").unwrap_or("").to_string();
                 let tag = str_param(p, "tag").map(str::to_string);
+                if let Some(t) = &tag
+                    && !valid_name(t)
+                {
+                    return Err(bad("xml.mapStyle", format!("`{t}` isn't a valid XML name")));
+                }
                 if s.doc()?.doc.styles.para(&style).is_none() {
                     return Err(bad("xml.mapStyle", format!("no paragraph style `{style}`")));
                 }
@@ -473,6 +478,19 @@ mod tests {
         assert!(s.execute("xml.loadDtd", &json!({"text": "<!ELEMENT a (b,|c)>"})).is_err());
         s.execute("xml.deleteDtd", &json!({})).unwrap();
         assert!(s.execute("xml.validate", &json!({})).is_err());
+    }
+
+    #[test]
+    fn map_style_rejects_invalid_tag_name() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        s.execute("style.paragraph.create", &json!({"name": "Head"})).unwrap();
+        assert!(s.execute("xml.mapStyle", &json!({"style": "Head", "tag": "a b><x"})).is_err());
+        let d = &s.doc().unwrap().doc;
+        assert!(d.xml.style_map.is_empty());
+        assert!(d.xml.tags.iter().all(|t| t.name != "a b><x"));
+        s.execute("xml.mapStyle", &json!({"style": "Head", "tag": "title"})).unwrap();
+        assert_eq!(s.doc().unwrap().doc.xml.style_map.len(), 1);
     }
 
     #[test]
