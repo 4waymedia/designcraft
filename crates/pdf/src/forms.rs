@@ -56,6 +56,25 @@ pub(crate) fn collect_media(doc: &Document, sheets: &[Sheet]) -> Vec<PlacedMedia
     out
 }
 
+/// A PDF name's characters, with everything outside the regular set written `#xx`.
+///
+/// ISO 32000-1 7.3.5: a name may hold only the regular characters, and `#` introduces a two-digit
+/// hex escape. A media type comes from a placed file's own metadata, and only `/` was escaped, so
+/// a type holding a space, a delimiter or `#` -- `video/mp4;x=(a)` -- wrote a name that ends
+/// early and leaves the rest as stray tokens in the PDF's structure (#1582).
+fn pdf_name(s: &str) -> String {
+    let regular = |b: u8| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'-' | b'.' | b'_' | b'~' | b'*' | b'@' | b'$' | b'&' | b'!' | b'^' | b'|');
+    let mut o = String::new();
+    for b in s.bytes() {
+        if regular(b) {
+            o.push(b as char);
+        } else {
+            o.push_str(&format!("#{b:02X}"));
+        }
+    }
+    o
+}
+
 /// A PDF text string: literal for ASCII, UTF-16BE otherwise.
 fn pdf_string(s: &str) -> String {
     if s.is_ascii() {
@@ -117,7 +136,7 @@ pub(crate) fn add_fields(pdf: &[u8], fields: &[Placed], media: &[PlacedMedia]) -
         let Some(&page_ref) = kids.get(*page) else { continue };
         let (file, spec, rendition, screen) = (next, next + 1, next + 2, next + 3);
         next += 4;
-        let mut body = format!("<</Type/EmbeddedFile/Subtype/{}/Length {}>>\nstream\n", mime.replace('/', "#2F"), data.len()).into_bytes();
+        let mut body = format!("<</Type/EmbeddedFile/Subtype/{}/Length {}>>\nstream\n", pdf_name(mime), data.len()).into_bytes();
         body.extend_from_slice(data);
         body.extend_from_slice(b"\nendstream");
         put(&mut out, file, &body);
@@ -254,4 +273,25 @@ pub(crate) fn add_fields(pdf: &[u8], fields: &[Placed], media: &[PlacedMedia]) -
     let _ = write!(x, "trailer\n<</Size {next}/Root {root} 0 R{info}{id}/Prev {prev}>>\nstartxref\n{xref_at}\n%%EOF\n");
     out.extend_from_slice(x.as_bytes());
     Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A media type comes from a placed file's own metadata and was written into a PDF name with
+    /// only `/` escaped, so a type holding a delimiter ended the name early and left the rest as
+    /// tokens in the file's structure (#1582).
+    #[test]
+    fn a_pdf_name_escapes_every_irregular_byte() {
+        assert_eq!(pdf_name("video/mp4"), "video#2Fmp4");
+        assert_eq!(pdf_name("a b"), "a#20b");
+        assert_eq!(pdf_name("x<</Type/Catalog>>"), "x#3C#3C#2FType#2FCatalog#3E#3E");
+        assert_eq!(pdf_name("a%comment"), "a#25comment");
+        assert_eq!(pdf_name("a#1"), "a#231");
+        assert_eq!(pdf_name("a(b)"), "a#28b#29");
+        assert_eq!(pdf_name("[1 0 R]"), "#5B1#200#20R#5D");
+        assert_eq!(pdf_name("application-x_test.v2"), "application-x_test.v2");
+        assert_eq!(pdf_name("\u{e9}"), "#C3#A9");
+    }
 }
