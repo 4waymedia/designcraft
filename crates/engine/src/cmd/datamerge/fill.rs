@@ -523,20 +523,44 @@ mod link_tests {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod image_path_tests {
     use std::path::Path;
 
     use super::image_candidates;
 
+    /// A merge image field names a file, and a field that names **another computer** must resolve
+    /// to nothing: a UNC path is how a hostile data file turns a merge into an outbound SMB
+    /// connection, and on Windows that means handing over NTLM credentials. This ran only on
+    /// unix, so the refusal was unverified on the one platform where UNC means anything (#1601).
     #[test]
-    fn image_cells_resolve_beside_the_data_and_never_to_other_computers() {
+    fn an_image_cell_never_resolves_to_another_computer() {
         let (data, doc) = (Path::new("/work/data"), Path::new("/work/doc"));
         for cell in [r"\\192.0.2.1\share\x.png", "file://192.0.2.1/s/x.png", "//192.0.2.1/s/x.png", "https://example.com/x.png"] {
             assert!(image_candidates(cell, Some(data), Some(doc)).is_empty(), "{cell}");
         }
+        // A field naming nothing resolves to nothing, whatever the platform.
+        assert!(image_candidates("", Some(data), Some(doc)).is_empty(), "an empty cell");
+        assert!(image_candidates("img/x.png", None, None).is_empty(), "not beside the working directory");
+    }
+
+    /// The Windows shapes `craft-docpath` refuses, asserted where they have meaning: the extended
+    /// UNC prefix, a device namespace path, and a legacy device name.
+    #[cfg(windows)]
+    #[test]
+    fn windows_device_and_extended_paths_are_refused() {
+        let (data, doc) = (Path::new(r"C:\work\data"), Path::new(r"C:\work\doc"));
+        for cell in [r"\\?\UNC\192.0.2.1\share\x.png", r"\\.\pipe\x", r"\\?\C:\secret\x.png", "CON", "NUL.png"] {
+            assert!(image_candidates(cell, Some(data), Some(doc)).is_empty(), "{cell}");
+        }
+    }
+
+    /// Resolution beside the data and the document, with absolute paths this platform means.
+    #[cfg(unix)]
+    #[test]
+    fn an_image_cell_resolves_beside_the_data_then_the_document() {
+        let (data, doc) = (Path::new("/work/data"), Path::new("/work/doc"));
         let found = image_candidates("img/x.png", Some(data), Some(doc));
         assert_eq!(found, [data.join("img").join("x.png"), doc.join("img").join("x.png")]);
-        assert!(image_candidates("img/x.png", None, None).is_empty(), "not beside the working directory");
     }
 }
