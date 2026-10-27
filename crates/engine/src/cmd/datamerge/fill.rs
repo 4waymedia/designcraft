@@ -4,7 +4,7 @@
 //! unfilled template. A placeholder whose frame or story is not in the map is left as it is.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use designcraft_doc::{
@@ -134,6 +134,53 @@ pub struct Sources<'a> {
     pub options: &'a MergeOptions,
     pub data_dir: Option<&'a Path>,
     pub doc_dir: Option<&'a Path>,
+    /// Images this merge has already read, by the path they resolved to.
+    ///
+    /// Every record used to stat and read its image again, so a 100,000-row sheet naming the same
+    /// file read it 100,000 times -- up to 256 MiB each, around 25 TB of I/O for one merge
+    /// (#1595). Shared by `&`, so the cache is behind a `RefCell`.
+    pub images: &'a ImageCache,
+}
+
+/// Image files read during one merge: the bytes by path, and the total read so far.
+#[derive(Default)]
+pub struct ImageCache {
+    inner: std::cell::RefCell<ImageCacheInner>,
+}
+
+#[derive(Default)]
+struct ImageCacheInner {
+    files: std::collections::HashMap<PathBuf, std::sync::Arc<Vec<u8>>>,
+    bytes: usize,
+}
+
+/// Bytes of distinct image files one merge keeps. Past this the cache stops growing and files are
+/// read as before, so a merge over many large images is slow rather than out of memory.
+const MAX_CACHED_IMAGE_BYTES: usize = 256 << 20;
+
+impl ImageCache {
+    /// The bytes of `path`, reading it once per merge. `read` is called only on a miss.
+    fn get_or_read(&self, path: &Path, read: impl FnOnce() -> Option<Vec<u8>>) -> Option<std::sync::Arc<Vec<u8>>> {
+        if let Some(found) = self.inner.borrow().files.get(path) {
+            return Some(found.clone());
+        }
+        let bytes = std::sync::Arc::new(read()?);
+        let mut inner = self.inner.borrow_mut();
+        if inner.bytes.saturating_add(bytes.len()) <= MAX_CACHED_IMAGE_BYTES {
+            inner.bytes = inner.bytes.saturating_add(bytes.len());
+            inner.files.insert(path.to_path_buf(), bytes.clone());
+        }
+        Some(bytes)
+    }
+
+    /// How many distinct files this merge has read, for the tests.
+    pub fn len(&self) -> usize {
+        self.inner.borrow().files.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// Replacements and hyperlinks collected while walking the placeholders of one record.
@@ -360,15 +407,20 @@ fn create_link(doc: &mut designcraft_doc::Document, anchor: PlaceholderAnchor, d
 }
 
 fn place_image(doc: &mut designcraft_doc::Document, item: ItemId, field: &str, cell: &str, record: u32, sources: &Sources, report: &mut FillReport) {
-    let Sources { options, data_dir, doc_dir } = *sources;
+    let Sources { options, data_dir, doc_dir, images } = *sources;
     let cands = image_candidates(cell, data_dir, doc_dir);
     let found = cands.iter().find_map(|p| {
-        // Refuse huge files before reading them; a too-large image counts as missing.
-        let len = crate::io::metadata(p).ok()?.len();
-        if len == 0 || len > super::MAX_IMAGE_FILE_BYTES {
-            return None;
-        }
-        crate::io::read_file(p).ok().filter(|b| !b.is_empty()).map(|b| (p.clone(), b))
+        // Read once per merge: many records naming one file is the normal case, and reading it
+        // per record is the amplification (#1595).
+        let bytes = images.get_or_read(p, || {
+            // Refuse huge files before reading them; a too-large image counts as missing.
+            let len = crate::io::metadata(p).ok()?.len();
+            if len == 0 || len > super::MAX_IMAGE_FILE_BYTES {
+                return None;
+            }
+            crate::io::read_file(p).ok().filter(|b| !b.is_empty())
+        })?;
+        Some((p.clone(), bytes))
     });
     let Some((path, bytes)) = found else {
         if let Some(it) = doc.item_mut(item) {
@@ -430,7 +482,9 @@ fn place_image(doc: &mut designcraft_doc::Document, item: ItemId, field: &str, c
         name,
         mime: designcraft_render::image_mime(&bytes).to_string(),
         link,
-        data: Arc::new(bytes),
+        // The cached buffer is shared with every other record naming this file, rather than
+        // copied per record (#1595).
+        data: bytes,
         pixels: Some((pw, ph)),
         ..Default::default()
     });
