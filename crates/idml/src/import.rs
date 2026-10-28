@@ -139,6 +139,9 @@ struct Importer<'r> {
     /// Graphic `Self` → stand-in image for a linked file that can't be read.
     previews: &'r HashMap<String, Arc<Vec<u8>>>,
     next_id: u64,
+    /// Cells every table in this import has reserved. One table is capped, but a file chooses
+    /// how many tables it has, so the cap has to be document-wide as well (noted in review).
+    table_cells: usize,
     settings: DocSettings,
     default_margins: Option<(Margins, Columns)>,
     swatches: Vec<Swatch>,
@@ -225,6 +228,7 @@ impl<'r> Importer<'r> {
             read_link,
             previews,
             next_id: 0,
+            table_cells: 0,
             settings: DocSettings::default(),
             default_margins: None,
             swatches: specials,
