@@ -172,15 +172,6 @@ impl ImageCache {
         }
         Some(bytes)
     }
-
-    /// How many distinct files this merge has read, for the tests.
-    pub fn len(&self) -> usize {
-        self.inner.borrow().files.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
 }
 
 /// Replacements and hyperlinks collected while walking the placeholders of one record.
