@@ -25,8 +25,21 @@ impl<'r> Importer<'r> {
         let id = self.alloc();
         let rows: Vec<&El> = e.find_all("Row").collect();
         let cols: Vec<&El> = e.find_all("Column").collect();
-        let nr = rows.len().max(1);
-        let nc = cols.len().max(1);
+        // A file's row and column counts are its claim, and a table of them is allocated whole: a
+        // story holding one `<Table>` with 5,000 of each asked for 25M cells, around 34 GB, which
+        // aborts the process instead of failing (#1583). What is read is clamped, and the rest of
+        // this function walks the clamped slices -- indexing `t.rows`/`t.columns` by the file's
+        // own counts would be out of bounds.
+        let (nr, nc) = designcraft_doc::table::clamped_size(rows.len().max(1), cols.len().max(1));
+        if nr < rows.len() || nc < cols.len() {
+            self.warnings.push(format!(
+                "a table of {} rows and {} columns was read as {nr} x {nc}: more than a table can hold",
+                rows.len(),
+                cols.len()
+            ));
+        }
+        let rows = &rows[..nr.min(rows.len())];
+        let cols = &cols[..nc.min(cols.len())];
         let mut t = Table::new(id, nr, nc, 0, 0, 0.0);
         t.options.direction = if e.get("TableDirection") == Some("RightToLeftDirection") {
             designcraft_doc::TextDirection::RightToLeft
