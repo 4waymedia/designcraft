@@ -3,7 +3,7 @@
 //! until the whole story fits (InDesign's Shift-click with a loaded text cursor).
 
 use designcraft_doc::{
-    CharacterStyle, Content, Document, ParaFormat, ParagraphStyle, SpreadRef, Story, StoryId, TextDirection, TextFileLink, TextSel,
+    CharacterStyle, Content, Document, ParaFormat, ParagraphStyle, SpreadRef, StartParagraph, Story, StoryId, TextDirection, TextFileLink, TextSel,
 };
 use designcraft_geom::Rect;
 use serde_json::{Value, json};
@@ -199,14 +199,21 @@ pub(crate) fn reimport(
 
 /// Is the story overset in its frames, and how much text do its full frames hold (bytes, frames)?
 /// A frame a column, frame or page break ends early is left out: it says nothing about how much
-/// a frame holds.
+/// a frame holds. So is one a Start Paragraph option ends early (#1209).
 fn fit(d: &Document, sid: StoryId) -> (Option<usize>, usize, usize) {
     let cs = designcraft_compose::compose_story(d, sid, &Default::default());
-    let text = d.story(sid).map_or("", |s| s.text.as_str());
+    let Some(story) = d.story(sid) else { return (cs.overset_at, 0, 0) };
+    let text = story.text.as_str();
+    // A frame's range stops before the paragraph's return.
+    let moved_on = |end: usize| {
+        let next = if text.as_bytes().get(end) == Some(&b'\n') { end.saturating_add(1) } else { end };
+        next.checked_sub(1).is_some_and(|i| text.as_bytes().get(i) == Some(&b'\n'))
+            && story.paras.get(story.para_at(next)).is_some_and(|p| d.styles.resolve_para(p).0.start_paragraph != StartParagraph::Anywhere)
+    };
     let (mut held, mut full) = (0, 0);
     for f in &cs.frames {
         let Some(shown) = text.get(f.range.clone()) else { continue };
-        if !shown.is_empty() && !shown.chars().any(designcraft_doc::is_break_char) {
+        if !shown.is_empty() && !shown.chars().any(designcraft_doc::is_break_char) && !moved_on(f.range.end) {
             held += shown.len();
             full += 1;
         }
