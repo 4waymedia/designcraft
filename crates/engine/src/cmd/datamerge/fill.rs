@@ -545,14 +545,26 @@ mod image_path_tests {
     }
 
     /// The Windows shapes `craft-docpath` refuses, asserted where they have meaning: the extended
-    /// UNC prefix, a device namespace path, and a legacy device name.
+    /// UNC prefix, a device namespace path, and a legacy device name (with an extension, since a
+    /// reserved name is reserved whatever follows it).
     #[cfg(windows)]
     #[test]
-    fn windows_device_and_extended_paths_are_refused() {
+    fn windows_device_and_network_paths_are_refused() {
         let (data, doc) = (Path::new(r"C:\work\data"), Path::new(r"C:\work\doc"));
-        for cell in [r"\\?\UNC\192.0.2.1\share\x.png", r"\\.\pipe\x", r"\\?\C:\secret\x.png", "CON", "NUL.png"] {
+        for cell in [r"\\?\UNC\192.0.2.1\share\x.png", r"\\.\pipe\x", r"\\?\GLOBALROOT\Device\HarddiskVolume1\x", "CON", "NUL.png"] {
             assert!(image_candidates(cell, Some(data), Some(doc)).is_empty(), "{cell}");
         }
+    }
+
+    /// An extended-length path is not one of them: `\\?\C:\x` names a local file, the same one
+    /// `C:\x` names, and `craft-docpath`'s own suite classifies it `PathKind::Local`. A data file
+    /// could already give the plain spelling, so refusing this one would shut out long paths
+    /// without shutting anything out (noted in review).
+    #[cfg(windows)]
+    #[test]
+    fn an_extended_length_drive_path_is_a_local_file() {
+        let (data, doc) = (Path::new(r"C:\work\data"), Path::new(r"C:\work\doc"));
+        assert!(!image_candidates(r"\\?\C:\secret\x.png", Some(data), Some(doc)).is_empty());
     }
 
     /// Resolution beside the data and the document, with absolute paths this platform means.
