@@ -184,7 +184,7 @@ pub fn import(bytes: &[u8]) -> Result<Imported, ImportError> {
                     }
                     "ParaStyle" => {
                         started = true;
-                        let v = unescape_value(value.trim());
+                        let v = unescape_value(value);
                         if !v.is_empty() && !para_styles.contains(&v) {
                             para_styles.push(v.clone());
                         }
@@ -193,7 +193,7 @@ pub fn import(bytes: &[u8]) -> Result<Imported, ImportError> {
                         }
                     }
                     "CharStyle" => {
-                        let v = unescape_value(value.trim());
+                        let v = unescape_value(value);
                         fmt.style = if v.is_empty() { NO_CHAR_STYLE.into() } else { v.clone() };
                         if !v.is_empty() && !char_styles.contains(&v) {
                             char_styles.push(v);
@@ -205,7 +205,7 @@ pub fn import(bytes: &[u8]) -> Result<Imported, ImportError> {
                     // keeps its style's size (#1593).
                     "cSize" => fmt.over.size = value.trim().parse().ok().and_then(designcraft_doc::attrs::imported_type_size),
                     "DefineParaStyle" | "DefineCharStyle" => {
-                        let nm = value.split('=').next().unwrap_or("").trim().to_string();
+                        let nm = value.split('=').next().unwrap_or("").to_string();
                         let list = if name == "DefineParaStyle" { &mut para_styles } else { &mut char_styles };
                         if !nm.is_empty() && !list.contains(&nm) {
                             list.push(nm);
@@ -276,6 +276,28 @@ mod tests {
         assert_eq!(back.story.text, i.story.text);
         // Half a pair is not a character: it is still left out.
         assert_eq!(import("<ASCII-WIN>\r\n<ParaStyle:Body>A<0xD83D>B<0xDE00>C".as_bytes()).unwrap().story.text, "ABC");
+    }
+
+    /// A style name is read back exactly as the exporter wrote it, spaces included.
+    #[test]
+    fn style_names_keep_leading_and_trailing_spaces() {
+        let i = import("<ASCII-WIN>\r\n<Version:7>\r\n<ParaStyle:Body ><CharStyle: Em >Hello<CharStyle:>".as_bytes()).unwrap();
+        assert_eq!(i.story.paras[0].style, "Body ");
+        assert_eq!(i.story.char_format_at(2).style, " Em ");
+        assert_eq!(i.para_styles[0].name, "Body ");
+        assert_eq!(i.char_styles[0].name, " Em ");
+    }
+
+    /// A style defined with spaces in its name keeps them, so a paragraph that uses the name matches.
+    #[test]
+    fn defined_style_names_keep_leading_and_trailing_spaces() {
+        let src =
+            "<ASCII-WIN>\r\n<DefineParaStyle:Body =<cSize:12>><DefineCharStyle: Em =<cSize:12>><ParaStyle:Body ><CharStyle: Em >Hello<CharStyle:>";
+        let i = import(src.as_bytes()).unwrap();
+        assert_eq!(i.para_styles.len(), 1);
+        assert_eq!(i.para_styles[0].name, "Body ");
+        assert_eq!(i.char_styles.len(), 1);
+        assert_eq!(i.char_styles[0].name, " Em ");
     }
 
     /// A size does not have to be non-finite to be nonsense: a file can hold `1e300`, `0` or a
