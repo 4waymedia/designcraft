@@ -344,3 +344,36 @@ fn autoflow_sizes_no_frame_by_one_a_start_option_ends_early() {
         assert!(d.next_id - ids < 100, "{start}: {} ids", d.next_id - ids);
     }
 }
+
+#[test]
+fn autoflow_looks_past_a_deleted_paragraph_for_the_start_option() {
+    // The title frame ends before a tracked deletion; the chapter after it starts on an odd page.
+    use designcraft_doc::{ChangeMark, build::NewDocument};
+    let mut d = Document::new(&NewDocument { pages: 1, facing_pages: false, primary_text_frame: true, ..Default::default() });
+    let sid = d.settings.primary_story.unwrap();
+    let st = d.story_mut(sid).unwrap();
+    st.insert(0, &format!("Front\nGone\nChapter one\n{}", "lorem ipsum dolor sit amet ".repeat(400).trim()));
+    st.paras[2].para.start_paragraph = Some(StartParagraph::NextOddPage);
+    st.format_chars(6..11, |f| f.over.change = Some(ChangeMark::Deleted));
+    let ids = d.next_id;
+    assert_eq!(autoflow(&mut d, sid, 2000, "file.place", false).unwrap(), 4);
+    assert_eq!(designcraft_compose::compose_story(&d, sid, &Default::default()).overset_at, None);
+    assert!(d.next_id - ids < 100, "{} ids", d.next_id - ids);
+}
+
+#[test]
+fn autoflow_asks_for_every_frame_the_start_options_ask_for_at_once() {
+    // A paragraph per page: no frame sets a fill rate, yet one round shouldn't add one frame.
+    use designcraft_doc::build::NewDocument;
+    let mut d = Document::new(&NewDocument { pages: 1, facing_pages: false, primary_text_frame: true, ..Default::default() });
+    let sid = d.settings.primary_story.unwrap();
+    let st = d.story_mut(sid).unwrap();
+    st.insert(0, (0..200).map(|i| format!("Chapter {i}\n")).collect::<String>().trim_end());
+    for p in &mut st.paras {
+        p.para.start_paragraph = Some(StartParagraph::NextPage);
+    }
+    let ids = d.next_id;
+    assert_eq!(autoflow(&mut d, sid, 2000, "file.place", false).unwrap(), 199);
+    assert_eq!(designcraft_compose::compose_story(&d, sid, &Default::default()).overset_at, None);
+    assert!(d.next_id - ids < 2000, "{} ids", d.next_id - ids);
+}

@@ -3483,8 +3483,8 @@ fn rewind(
 }
 
 /// Paragraphs that tracked changes delete: all their text is deleted, and so is their return or
-/// the return before them (then they join a paragraph and add nothing to it).
-fn deleted_paras(story: &Story, ranges: &[Range<usize>]) -> Vec<bool> {
+/// the return before them (then they join a paragraph and add nothing to it). Composing skips them.
+pub fn deleted_paras(story: &Story, ranges: &[Range<usize>]) -> Vec<bool> {
     let mut spans: Vec<Range<usize>> = Vec::new();
     for (r, f) in story.runs() {
         if f.over.change != Some(designcraft_doc::ChangeMark::Deleted) {
