@@ -77,6 +77,28 @@ fn exports_valid_pdf_with_one_page_per_page() {
 }
 
 #[test]
+fn discretionary_hyphen_pdf_text_follows_visible_breaks() {
+    let text = "Wir möchten uns ganz besonders herzlich bei folgenden Personen bedanken, die auf unterschied\u{ad}lichste Weise zur Entstehung dieses Lehrbuches beigetragen haben:";
+    for composer in [designcraft_doc::Composer::SingleLine, designcraft_doc::Composer::Paragraph] {
+        for (width, expected) in [(430.0, "unterschied-lichste"), (540.0, "unterschiedlichste")] {
+            let mut d = Document::new(&NewDocument::default());
+            let lid = d.default_layer();
+            let para = designcraft_doc::ParaAttrs { composer: Some(composer), hyphenate: Some(false), ..Default::default() };
+            let (_, sid) = d
+                .add_text_frame(SpreadRef::Doc(0), Rect::new(36.0, 36.0, 36.0 + width, 400.0), lid, text, ParaFormat { para, ..Default::default() })
+                .unwrap();
+            d.story_mut(sid).unwrap().format_chars(0..text.len(), |f| f.over.size = Some(9.5));
+            for tagged in [false, true] {
+                let bytes = export_pdf(&d, &Cache::new(), &PdfOptions { tagged, ..Default::default() }).unwrap();
+                let extracted = extract_text(&bytes).concat();
+                assert!(extracted.contains(expected), "{composer:?}, width={width}, tagged={tagged}: {extracted:?}");
+                assert!(!extracted.contains('\u{ad}'));
+            }
+        }
+    }
+}
+
+#[test]
 fn text_is_real_text() {
     let d = doc_with_text("Hello DesignCraft — efficient affine");
     let s = uncompressed(&d, PdfOptions::default());

@@ -1103,21 +1103,95 @@ fn hyphenate_across_column_off_keeps_nested_line_styles_on_their_lines() {
 }
 
 #[test]
-fn discretionary_hyphen_replaces_automatic_points() {
-    let text = "aaaa bbbb cccc extraordi\u{AD}narily dddd eeee";
-    let para = ParaAttrs { align: Some(Align::Left), ..Default::default() };
-    let (d, sid, _) = doc_with(text, Rect::new(0.0, 0.0, 120.0, 1000.0), para);
-    let cs = compose_story(&d, sid, &ComposeOptions::default());
-    let soft = text.find('\u{AD}').unwrap();
-    for l in all_lines(&cs) {
-        if l.hyphenated {
-            let last = l.glyphs.iter().rfind(|g| g.len > 0).unwrap();
-            assert!(last.byte + last.len >= soft && last.byte <= soft + 2, "{:?}", &text[l.range.clone()]);
+fn discretionary_hyphen_breaks_with_both_composers_and_hyphenation_settings() {
+    let text = "Wir möchten uns ganz besonders herzlich bei folgenden Personen bedanken, die auf unterschied\u{ad}lichste Weise zur Entstehung dieses Lehrbuches beigetragen haben:";
+    let soft_end = text.find('\u{ad}').unwrap() + '\u{ad}'.len_utf8();
+    for composer in [Composer::SingleLine, Composer::Paragraph] {
+        for hyphenate in [false, true] {
+            let para = ParaAttrs { composer: Some(composer), hyphenate: Some(hyphenate), ..Default::default() };
+            let (mut d, sid, _) = doc_with(text, Rect::new(0.0, 0.0, 430.0, 1000.0), para);
+            d.story_mut(sid).unwrap().format_chars(0..text.len(), |f| f.over.size = Some(9.5));
+            let cs = compose_story(&d, sid, &ComposeOptions::default());
+            let first = all_lines(&cs)[0];
+            assert_eq!(first.range.end, soft_end, "{composer:?}, hyphenate={hyphenate}: {:?}", &text[first.range.clone()]);
+            assert!(first.hyphenated);
+            let hyphen = first.glyphs.last().unwrap();
+            assert!(hyphen.visible && hyphen.len == 0 && hyphen.adv > 0.0);
         }
     }
-    // Hyphenation points of the word itself: none besides the discretionary one.
-    let lines = all_lines(&cs);
-    assert!(lines.iter().filter(|l| l.hyphenated).count() <= 1);
+}
+
+#[test]
+fn discretionary_hyphen_before_cjk_single_line() {
+    discretionary_hyphen_before_cjk(Composer::SingleLine);
+}
+
+#[test]
+fn discretionary_hyphen_before_cjk_paragraph() {
+    discretionary_hyphen_before_cjk(Composer::Paragraph);
+}
+
+fn discretionary_hyphen_before_cjk(composer: Composer) {
+    let text = "abc\u{ad}\u{65e5}\u{672c}\u{8a9e}\u{65e5}\u{672c}\u{8a9e}";
+    let soft_end = text.find('\u{ad}').unwrap() + '\u{ad}'.len_utf8();
+    for hyphenate in [false, true] {
+        let para = ParaAttrs { composer: Some(composer), hyphenate: Some(hyphenate), ..Default::default() };
+        let (d, sid, _) = doc_with(text, Rect::new(0.0, 0.0, 24.0, 1000.0), para);
+        let cs = compose_story(&d, sid, &ComposeOptions::default());
+        let first = all_lines(&cs)[0];
+        assert_eq!(first.range.end, soft_end, "{composer:?}, hyphenate={hyphenate}: {:?}", &text[first.range.clone()]);
+        assert!(first.hyphenated, "{composer:?}, hyphenate={hyphenate}");
+        let hyphen = first.glyphs.last().unwrap();
+        assert!(hyphen.visible && hyphen.len == 0 && hyphen.adv > 0.0);
+    }
+}
+
+#[test]
+fn discretionary_hyphen_is_invisible_and_zero_width_when_unbroken() {
+    for composer in [Composer::SingleLine, Composer::Paragraph] {
+        let mut widths = Vec::new();
+        for text in ["unterschiedlichste", "unterschied\u{ad}lichste"] {
+            let (d, sid, _) = doc_with(text, Rect::new(0.0, 0.0, 1000.0, 100.0), ParaAttrs { composer: Some(composer), ..Default::default() });
+            let cs = compose_story(&d, sid, &ComposeOptions::default());
+            let lines = all_lines(&cs);
+            assert_eq!(lines.len(), 1);
+            assert!(!lines[0].hyphenated);
+            if let Some(soft) = text.find('\u{ad}') {
+                let glyph = lines[0].glyphs.iter().find(|g| g.byte == soft).unwrap();
+                assert!(!glyph.visible && glyph.adv == 0.0);
+            }
+            widths.push(lines[0].end_x);
+        }
+        assert!((widths[0] - widths[1]).abs() < 1e-6, "{composer:?}: {widths:?}");
+    }
+}
+
+#[test]
+fn discretionary_hyphen_replaces_automatic_points() {
+    let text = "aaaa bbbb cccc extraordi\u{AD}narily dddd eeee";
+    let soft = text.find('\u{AD}').unwrap();
+    for composer in [Composer::SingleLine, Composer::Paragraph] {
+        let mut discretionary_breaks = 0;
+        let mut automatic_breaks = 0;
+        for width in (90..181).step_by(10) {
+            for discretionary in [false, true] {
+                let source = if discretionary { text.to_string() } else { text.replace('\u{AD}', "") };
+                let para = ParaAttrs { composer: Some(composer), hyphenate: Some(true), align: Some(Align::Left), ..Default::default() };
+                let (d, sid, _) = doc_with(&source, Rect::new(0.0, 0.0, f64::from(width), 1000.0), para);
+                let cs = compose_story(&d, sid, &ComposeOptions::default());
+                for l in all_lines(&cs).into_iter().filter(|l| l.hyphenated) {
+                    if discretionary {
+                        assert_eq!(l.range.end, soft + '\u{AD}'.len_utf8(), "{composer:?}: {:?}", &source[l.range.clone()]);
+                        discretionary_breaks += 1;
+                    } else {
+                        automatic_breaks += 1;
+                    }
+                }
+            }
+        }
+        assert!(discretionary_breaks > 0, "{composer:?}: discretionary breaks exercised");
+        assert!(automatic_breaks > 0, "{composer:?}: pattern breaks exercised without U+00AD");
+    }
 }
 
 #[test]
