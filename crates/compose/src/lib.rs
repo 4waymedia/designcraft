@@ -930,16 +930,23 @@ fn line_has_wrapping_exclusion(frame: &FrameSpec, range: Range<usize>, column: R
     })
 }
 
-fn previous_visible_break(doc: &Document, story: &Story, ranges: &[Range<usize>], deleted: &[bool], pi: usize) -> Option<StartParagraph> {
+/// The visible break ending the last placed paragraph before `pi`, which sends `pi` on.
+pub fn previous_visible_break(doc: &Document, story: &Story, ranges: &[Range<usize>], deleted: &[bool], pi: usize) -> Option<StartParagraph> {
     (0..pi).rev().find(|&p| !deleted.get(p).copied().unwrap_or(false)).and_then(|p| {
         let range = ranges.get(p)?;
-        let (index, character) = story.text.get(range.clone())?.char_indices().next_back()?;
-        let start = break_start(character)?;
-        let (_, chars) = doc.styles.resolve_para(story.paras.get(p)?);
-        let props = doc.styles.resolve_char(&chars, story.char_format_at(range.start + index + character.len_utf8()));
-        let gone = props.change == designcraft_doc::ChangeMark::Deleted || doc.conditions_hide(&props.conditions);
-        (!gone).then_some(start)
+        let (index, _) = story.text.get(range.clone())?.char_indices().next_back()?;
+        visible_break(doc, story, p, range.start + index)
     })
+}
+
+/// The start option of the break at byte `at` in paragraph `p`, unless deleted or hidden.
+pub fn visible_break(doc: &Document, story: &Story, p: usize, at: usize) -> Option<StartParagraph> {
+    let character = story.text.get(at..)?.chars().next()?;
+    let start = break_start(character)?;
+    let (_, chars) = doc.styles.resolve_para(story.paras.get(p)?);
+    let props = doc.styles.resolve_char(&chars, story.char_format_at(at + character.len_utf8()));
+    let gone = props.change == designcraft_doc::ChangeMark::Deleted || doc.conditions_hide(&props.conditions);
+    (!gone).then_some(start)
 }
 
 fn named_list_labels(doc: &Document, story: &Story, ranges: &[Range<usize>], deleted: &[bool]) -> Vec<Option<String>> {

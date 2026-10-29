@@ -205,16 +205,15 @@ fn fit(d: &Document, sid: StoryId) -> (Option<usize>, usize, usize, usize) {
     let cs = designcraft_compose::compose_story(d, sid, &Default::default());
     let Some(story) = d.story(sid) else { return (cs.overset_at, 0, 0, 0) };
     let text = story.text.as_str();
-    let deleted = designcraft_compose::deleted_paras(story, &story.para_ranges());
-    let starts = |p: usize| {
-        !deleted.get(p).copied().unwrap_or(false)
-            && story.paras.get(p).is_some_and(|pf| d.styles.resolve_para(pf).0.start_paragraph != StartParagraph::Anywhere)
-    };
+    let ranges = story.para_ranges();
+    let deleted = designcraft_compose::deleted_paras(story, &ranges);
+    let placed = |p: usize| !deleted.get(p).copied().unwrap_or(false);
+    let starts = |p: usize| placed(p) && story.paras.get(p).is_some_and(|pf| d.styles.resolve_para(pf).0.start_paragraph != StartParagraph::Anywhere);
     // A frame's range stops before the paragraph's return; composing skips deleted paragraphs.
     let moved_on = |end: usize| {
         let next = if text.as_bytes().get(end) == Some(&b'\n') { end.saturating_add(1) } else { end };
         next.checked_sub(1).is_some_and(|i| text.as_bytes().get(i) == Some(&b'\n'))
-            && (story.para_at(next)..story.paras.len()).find(|&p| !deleted.get(p).copied().unwrap_or(false)).is_some_and(starts)
+            && (story.para_at(next)..story.paras.len()).find(|&p| placed(p)).is_some_and(starts)
     };
     let (mut held, mut full) = (0, 0);
     for f in &cs.frames {
@@ -228,8 +227,28 @@ fn fit(d: &Document, sid: StoryId) -> (Option<usize>, usize, usize, usize) {
         let first = story.para_at(at);
         // The paragraph the overset text starts with counts when it starts there.
         let from = if at.checked_sub(1).is_none_or(|i| text.as_bytes().get(i) == Some(&b'\n')) { first } else { first.saturating_add(1) };
-        let breaks = text.get(at..).map_or(0, |t| t.chars().filter(|&c| designcraft_doc::is_break_char(c)).count());
-        (from..story.paras.len()).filter(|&p| starts(p)).count().saturating_add(breaks)
+        // Once per paragraph: after a break, its start option only fixes odd or even page parity.
+        let sent = (from..ranges.len())
+            .filter(|&p| starts(p) || (placed(p) && designcraft_compose::previous_visible_break(d, story, &ranges, &deleted, p).is_some()))
+            .count();
+        // A break inside a paragraph moves the rest of it.
+        let inside: usize = (first..ranges.len())
+            .filter(|&p| placed(p))
+            .filter_map(|p| Some((p, ranges.get(p)?.clone())))
+            .map(|(p, r)| {
+                let Some(t) = text.get(r.clone()) else { return 0 };
+                let last = t.char_indices().next_back().map(|(i, _)| i);
+                t.char_indices()
+                    .filter(|&(i, c)| {
+                        designcraft_doc::is_break_char(c)
+                            && Some(i) != last
+                            && r.start.saturating_add(i) >= at
+                            && designcraft_compose::visible_break(d, story, p, r.start.saturating_add(i)).is_some()
+                    })
+                    .count()
+            })
+            .sum();
+        sent.saturating_add(inside)
     });
     (cs.overset_at, held, full, forced)
 }
