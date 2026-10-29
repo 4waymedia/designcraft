@@ -142,6 +142,11 @@ struct Importer<'r> {
     /// Cells every table in this import has reserved. One table is capped, but a file chooses
     /// how many tables it has, so the cap has to be document-wide as well (noted in review).
     table_cells: usize,
+    /// Tables whose size the file claimed and did not get, warned about so far. A file chooses
+    /// how many tables it has, so a line each is its own flood (noted in review).
+    table_warnings: usize,
+    /// Whether the file has already been told its tables ran out of cells between them.
+    table_budget_spent: bool,
     settings: DocSettings,
     default_margins: Option<(Margins, Columns)>,
     swatches: Vec<Swatch>,
@@ -229,6 +234,8 @@ impl<'r> Importer<'r> {
             previews,
             next_id: 0,
             table_cells: 0,
+            table_warnings: 0,
+            table_budget_spent: false,
             settings: DocSettings::default(),
             default_margins: None,
             swatches: specials,
