@@ -1007,7 +1007,10 @@ impl Document {
                 return;
             }
             if !seen.insert(old) {
-                next += 1;
+                // An id at the top of the range has no successor: leave the duplicate for
+                // `check()` to refuse rather than overflow.
+                let Some(n) = next.checked_add(1) else { return };
+                next = n;
                 it.id = ItemId(next);
             }
             if let Some(t) = it.text_frame() {

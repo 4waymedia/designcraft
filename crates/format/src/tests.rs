@@ -822,3 +822,17 @@ fn duplicate_anchored_item_ids_are_renumbered() {
     assert_eq!(anchored[0].1.shape, Shape::Oval);
     assert_ne!(anchored[0].1.id, g);
 }
+
+#[test]
+fn duplicate_ids_at_the_top_of_the_range_do_not_overflow() {
+    let mut d = Document::new(&NewDocument::default());
+    let one = png_asset(&mut d, &[1]);
+    let two = png_asset(&mut d, &[2]);
+    place(&mut d, one, 0.0);
+    place(&mut d, two, 0.0);
+    set_item_id(&mut d, 0, designcraft_doc::ItemId(u64::MAX));
+    set_item_id(&mut d, 1, designcraft_doc::ItemId(u64::MAX));
+    d.renumber_duplicate_items();
+    assert_eq!(all_item_ids(&d), vec![u64::MAX, u64::MAX]);
+    assert!(d.check().is_err());
+}
