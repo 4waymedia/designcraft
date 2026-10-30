@@ -86,15 +86,7 @@ mod tests {
         } else {
             assert_eq!(
                 command,
-                [
-                    "xps-print",
-                    "printer=Office",
-                    "copies=2",
-                    "collate=true",
-                    "duplex=(queue default)",
-                    "scaling=shrink-to-fit",
-                    "color=(driver default)"
-                ]
+                ["xps-print", "printer=Office", "copies=2", "collate=true", "duplex=(queue default)", "scaling=shrink-to-fit", "color=color"]
             );
         }
         assert!(r["bytes"].as_u64().unwrap() > 500);
