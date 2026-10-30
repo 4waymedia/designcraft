@@ -31,6 +31,8 @@ pub(crate) const MAX_PASSES: usize = 64;
 /// Fewest extra compositions allowed before giving up on a layout that keeps moving: a single
 /// object that keep options or vertical justification move still gets the room it had before.
 const MIN_PASSES: usize = 4;
+// `clamp` needs min <= max.
+const _: () = assert!(MIN_PASSES <= MAX_PASSES);
 
 /// How far an obstacle may move between passes and still count as settled (points).
 const SETTLED: f64 = 0.01;
@@ -210,7 +212,7 @@ pub(crate) fn compose_among(doc: &Document, sid: StoryId, opts: &ComposeOptions,
     }
     let own = st.objects.iter().filter(|o| wraps(o) && !matches!(o.position, AnchorPosition::Inline { .. })).count();
     let mut prev = vec![Vec::new(); specs.len()];
-    for _ in 0..(own + 1).max(MIN_PASSES).min(MAX_PASSES) {
+    for _ in 0..(own + 1).clamp(MIN_PASSES, MAX_PASSES) {
         let added = exclusions(doc, &specs, &obstacles(doc, st, &out, true));
         if settled(&added, &prev) {
             break;
