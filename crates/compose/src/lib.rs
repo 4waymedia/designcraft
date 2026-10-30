@@ -1106,7 +1106,7 @@ fn place_table_paragraph(input: TableParagraphInput<'_>) -> TableParagraphResult
     }
     let at_top = cursor.last_baseline.is_none();
     let start_at = (cursor.fi, cursor.col);
-    if !table::place_table(doc, table, anchor, paragraph, props, frames, columns, cursor, out, opts) {
+    if !table::place_table(doc, table, anchor, paragraph, props, frames, columns, cursor, out, notes, opts) {
         if let Some(j) = trial_failed(trial, limits, *balance_runs < balance_budget) {
             *balance_runs += 1;
             rewind(j, snaps, note_snaps, notes, out, cursor, list_counter, force_col, line_cap, no_hyph);
@@ -3115,7 +3115,7 @@ fn finish_composition(input: FinishInput<'_>) -> ComposedStory {
         let before: Vec<f64> = ft.tables.iter().map(|t| ft.lines.get(t.line).map_or(0.0, |l| l.baseline)).collect();
         let spanned = ft.columns.len() > 1 && ft.lines.iter().any(|l| span_paras.get(l.para) == Some(&true))
             || ft.lines.iter().any(|l| split_paras.get(l.para) == Some(&true));
-        vertical_justify(ft, f, spanned);
+        vertical_justify(ft, f, spanned, &doc.footnote_options);
         for (t, b) in ft.tables.iter_mut().zip(before) {
             let now = ft.lines.get(t.line).map_or(b, |l| l.baseline);
             t.shift(now - b);
@@ -5327,7 +5327,7 @@ fn hyphenation_points(
 }
 
 /// `spanned`: a paragraph spans the frame's columns, so the lines move together.
-fn vertical_justify(ft: &mut FrameText, f: &FrameSpec, spanned: bool) {
+fn vertical_justify(ft: &mut FrameText, f: &FrameSpec, spanned: bool, notes: &designcraft_doc::FootnoteOptions) {
     if ft.lines.is_empty() || f.opts.vertical_justification == VerticalJustification::Top {
         return;
     }
@@ -5340,7 +5340,14 @@ fn vertical_justify(ft: &mut FrameText, f: &FrameSpec, spanned: bool) {
         let idx: Vec<usize> = ft.lines.iter().enumerate().filter(|(_, l)| spanned || l.column == c).map(|(i, _)| i).collect();
         let (Some(&a), Some(_)) = (idx.first(), idx.last()) else { continue };
         let bottom = idx.iter().map(|&i| ft.lines[i].baseline + ft.lines[i].descent).fold(f64::NEG_INFINITY, f64::max);
-        let space = f.area.y1 - bottom;
+        let bottom = ft.tables.iter().filter(|t| spanned || t.column == c).map(|t| t.rect.y1).fold(bottom, f64::max);
+        let limit = ft
+            .notes
+            .iter()
+            .filter(|n| spanned || notes.span_columns || n.column == c)
+            .map(|n| n.rect.y0 - notes.space_before)
+            .fold(f.area.y1, f64::min);
+        let space = limit - bottom;
         if space <= 0.0 {
             continue;
         }

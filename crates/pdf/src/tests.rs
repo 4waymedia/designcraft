@@ -799,6 +799,36 @@ fn only_printed_fields_and_buttons_export() {
 }
 
 #[test]
+fn form_field_border_follows_the_item_stroke() {
+    use designcraft_doc::{FieldKind, FormField, Shape, Stroke};
+    use designcraft_geom::shapes::rectangle;
+    let export = |stroke: Stroke| {
+        let mut d = Document::new(&NewDocument::default());
+        let lid = d.default_layer();
+        let mut it = Item::new(ItemId(d.alloc()), lid, Shape::Rectangle, rectangle(Rect::new(72.0, 72.0, 250.0, 96.0)));
+        it.stroke = stroke;
+        it.form_field = Some(FormField {
+            kind: FieldKind::TextField,
+            name: "name".into(),
+            value: String::new(),
+            options: Vec::new(),
+            multiline: false,
+            required: false,
+            font_size: 0.0,
+        });
+        d.insert_item(SpreadRef::Doc(0), it, None).unwrap();
+        uncompressed(&d, PdfOptions::default())
+    };
+    let none = export(Stroke { weight: 0.0, swatch: designcraft_color::swatch::NONE.into(), ..Stroke::default() });
+    assert!(none.contains("/Subtype/Widget"));
+    assert!(none.contains("/BS<</W 0>>"), "no border width");
+    assert!(!none.contains("/BC"), "no border colour");
+    let stroked = export(Stroke { weight: 1.0, ..Stroke::default() });
+    assert!(stroked.contains("/BS<</W 1"), "border width");
+    assert!(stroked.contains("/BC"), "border colour");
+}
+
+#[test]
 fn extreme_page_selection_is_a_page_error_without_overflow() {
     let doc = doc_with_text("Bounded page selection");
     let opts = PdfOptions { pages: Some(vec![usize::MAX]), ..Default::default() };
