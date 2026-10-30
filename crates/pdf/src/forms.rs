@@ -178,8 +178,11 @@ pub(crate) fn add_fields(pdf: &[u8], fields: &[Placed], media: &[PlacedMedia]) -
             }
             FieldKind::CheckBox => {
                 // Appearances: an empty box, and a box with a check mark.
-                let border =
-                    if *bw > 0.0 { format!("0.45 G {bw:.2} w {i:.2} {i:.2} {:.2} {:.2} re S", (w - bw).max(0.0), (h - bw).max(0.0), i = bw / 2.0) } else { String::new() };
+                let border = if *bw > 0.0 {
+                    format!("0.45 G {bw:.2} w {i:.2} {i:.2} {:.2} {:.2} re S", (w - bw).max(0.0), (h - bw).max(0.0), i = bw / 2.0)
+                } else {
+                    String::new()
+                };
                 let check = format!(
                     "{border} 0 g {:.2} w 1 J 1 j {:.2} {:.2} m {:.2} {:.2} l {:.2} {:.2} l S",
                     (w.min(h) * 0.12).max(0.8),
