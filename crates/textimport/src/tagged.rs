@@ -186,7 +186,10 @@ pub fn import(bytes: &[u8]) -> Result<Imported, ImportError> {
                 let (name, value) = tag.split_once(':').map_or((tag.as_str(), ""), |(a, b)| (a, b));
                 match name {
                     n if n.starts_with("0x") => {
-                        if let Ok(u) = u32::from_str_radix(&n[2..], 16)
+                        // `from_str_radix` accepts a leading '+', so check the digits first.
+                        if let Some(digits) = n.get(2..)
+                            && digits.bytes().all(|b| b.is_ascii_hexdigit())
+                            && let Ok(u) = u32::from_str_radix(digits, 16)
                             && let Some(ch) = units.push(u)
                         {
                             push(&mut paras, ch, &fmt);
@@ -309,6 +312,16 @@ mod tests {
         assert_eq!(i.para_styles[0].name, "Body ");
         assert_eq!(i.char_styles.len(), 1);
         assert_eq!(i.char_styles[0].name, " Em ");
+    }
+
+    /// `from_str_radix` accepts a leading `+`, so `<0x+41>` inserted an 'A'. A signed or empty
+    /// code is not a code point tag and is skipped.
+    #[test]
+    fn a_signed_hex_code_tag_is_skipped() {
+        for t in ["<0x+41>", "<0x-41>", "<0x>", "<0xZZ>"] {
+            let src = format!("<ASCII-WIN>\r\n<ParaStyle:Body>A{t}B");
+            assert_eq!(import(src.as_bytes()).unwrap().story.text, "AB", "{t}");
+        }
     }
 
     /// A size does not have to be non-finite to be nonsense: a file can hold `1e300`, `0` or a
